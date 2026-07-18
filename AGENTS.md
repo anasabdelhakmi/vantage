@@ -8,7 +8,7 @@ full spec.** This file is the short version plus hard rules.
 
 Vantage: an AI copilot for rural clinics. A **Kimi** agent (`agent.py`)
 orchestrates three tools — triage, restock, escalation — fed by **Oxylabs**
-signals, hosted on **Nosana**, tested by **Doubleword**, with **Datona** for
+signals, hosted on **Nosana**, tested by **ai&**, with **Datona** for
 consent. See `README.md` §3 for the architecture.
 
 ## Golden rules (do not break these)
@@ -46,10 +46,11 @@ python -m compileall -q .          # no syntax errors
 
 ## Tech facts worth knowing
 
-- Kimi, Nosana endpoints, and Doubleword are all **OpenAI-API-compatible** — use
+- Kimi, Nosana endpoints, and ai& are all **OpenAI-API-compatible** — use
   the `openai` Python client, just change `base_url`/`api_key` (see `config.py`).
 - Kimi base URL: `https://api.moonshot.ai/v1`. Docs: platform.moonshot.ai
-- Doubleword batch API expects **JSONL** (one request per line); base URL
-  `https://api.doubleword.ai/v1`.
+- ai& is OpenAI-compatible; base URL `https://api.aiand.com/v1`, model
+  `openai/gpt-oss-120b`. `build_cases()` still writes JSONL (one request per
+  line). Docs: https://docs.aiand.com
 - Nosana endpoints look like `https://<id>.node.k8s.prod.nos.ci/v1`.
 - Python 3.10+.

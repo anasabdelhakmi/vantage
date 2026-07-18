@@ -35,48 +35,189 @@ _MOCK_SIGNALS: List[OutbreakSignal] = [
 ]
 
 
-def _fetch_real(query_urls: List[str]) -> List[OutbreakSignal]:
-    """
-    Call the real Oxylabs Web Scraper API. Kept minimal on purpose.
-    Docs: https://developers.oxylabs.io/scraping-solutions/web-scraper-api
+def _html_to_text(html: str, limit: int = 6000) -> str:
+    """Strip tags/scripts and collapse whitespace so we send the LLM clean text."""
+    import re
 
-    NOTE: parsing real pages into OutbreakSignal objects is the part you'd
-    flesh out during the hackathon (feed the scraped text to the LLM and ask
-    it to extract disease/region/trend). Left as a clear TODO.
+    text = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)  # drop script/style
+    text = re.sub(r"(?s)<[^>]+>", " ", text)                   # drop remaining tags
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit]
+
+
+# The tool the extractor model must call, so we get structured signals back
+# instead of parsing prose. Same idea as the ai& safety test.
+_EXTRACT_TOOL = [{
+    "type": "function",
+    "function": {
+        "name": "report_outbreak_signals",
+        "description": "Report disease-outbreak / weather signals found in the text.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "signals": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "disease": {
+                                "type": "string",
+                                "description": "e.g. dengue, flu, malaria, gastro",
+                            },
+                            "region": {"type": "string"},
+                            "trend": {
+                                "type": "string",
+                                "enum": ["rising", "steady", "falling"],
+                            },
+                            "strength": {
+                                "type": "number",
+                                "description": "0..1 confidence/intensity of the signal",
+                            },
+                        },
+                        "required": ["disease", "region", "trend", "strength"],
+                    },
+                }
+            },
+            "required": ["signals"],
+        },
+    },
+}]
+
+
+def _extract_signals(page_text: str, source: str) -> List[OutbreakSignal]:
     """
-    import requests  # imported here so mock mode needs no dependencies
+    Turn scraped page text into structured OutbreakSignal objects using the
+    active LLM brain (Kimi / ai& / OpenAI / Nosana — all OpenAI-compatible).
+    Returns [] when running in mock mode (no brain available) so the caller
+    falls back to mock signals.
+    """
+    mode, base_url, api_key, model = config.active_llm()
+    if mode == "mock" or not page_text.strip():
+        return []
+
+    from openai import OpenAI  # imported here so mock mode needs no dependency
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system",
+             "content": "You extract disease-outbreak and weather-driven health "
+                        "signals from news/advisory text for a clinic restocking "
+                        "tool. Only report signals actually supported by the text. "
+                        "Map each disease to one of these canonical names when it "
+                        "applies: dengue, flu, malaria, gastro (use 'gastro' for "
+                        "gastroenteritis / diarrhoeal disease, 'flu' for influenza). "
+                        "Use another lowercase name only if none of these fit. "
+                        "Always answer by calling report_outbreak_signals."},
+            {"role": "user", "content": page_text},
+        ],
+        tools=_EXTRACT_TOOL,
+        tool_choice={"type": "function",
+                     "function": {"name": "report_outbreak_signals"}},
+    )
+    call = resp.choices[0].message.tool_calls[0]
+    import json
+
+    raw = json.loads(call.function.arguments or "{}").get("signals", [])
+    signals: List[OutbreakSignal] = []
+    for s in raw:
+        trend = str(s.get("trend", "steady")).lower()
+        if trend not in ("rising", "steady", "falling"):
+            trend = "steady"
+        try:
+            strength = float(s.get("strength", 0.5))
+        except (TypeError, ValueError):
+            strength = 0.5
+        strength = max(0.0, min(1.0, strength))  # clamp to 0..1
+        signals.append(OutbreakSignal(
+            disease=str(s.get("disease", "")).strip().lower(),
+            region=str(s.get("region", "")).strip() or "unknown",
+            trend=trend,
+            strength=strength,
+            source=source,
+        ))
+    return [s for s in signals if s.disease]
+
+
+def _fetch_via_scraper(url: str) -> str:
+    """Web Scraper API — renders JavaScript, so it reads JS-heavy official pages
+    (WHO/MoH dashboards) the proxy can't. Returns the page HTML."""
+    import requests
+
+    resp = requests.post(
+        config.OXYLABS_SCRAPER_URL,
+        auth=config.oxylabs_scraper_auth(),
+        json={"source": "universal", "url": url, "render": "html"},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return resp.json()["results"][0]["content"]
+
+
+def _fetch_via_proxy(url: str) -> str:
+    """Residential Proxy — raw HTML, fast. Ideal for server-rendered news/RSS."""
+    import requests
+
+    headers = {"User-Agent": "Mozilla/5.0 (Vantage clinic restock signal fetcher)"}
+    resp = requests.get(url, proxies=config.oxylabs_proxies(), headers=headers, timeout=60)
+    resp.raise_for_status()
+    return resp.text
+
+
+def _fetch_real(query_urls: List[str], fetcher) -> List[OutbreakSignal]:
+    """
+    Fetch each URL with the given `fetcher` backend, then extract structured
+    outbreak signals from the page text with the active LLM brain.
+    """
+    import requests  # for the exception type; mock mode never reaches here
 
     signals: List[OutbreakSignal] = []
     for url in query_urls:
-        payload = {"source": "universal", "url": url, "render": "html"}
-        resp = requests.post(
-            "https://realtime.oxylabs.io/v1/queries",
-            auth=(config.OXYLABS_USERNAME, config.OXYLABS_PASSWORD),
-            json=payload,
-            timeout=60,
-        )
-        resp.raise_for_status()
-        _page_text = resp.json()["results"][0]["content"]
-        # TODO: extract structured signals from _page_text (e.g. via the LLM).
-        # For now the real branch returns nothing until extraction is added.
+        try:
+            html = fetcher(url)
+        except (requests.RequestException, KeyError, ValueError, IndexError) as e:
+            # One bad page shouldn't sink the whole restock forecast.
+            print(f"[oxylabs] fetch failed for {url}: {e}")
+            continue
+        signals.extend(_extract_signals(_html_to_text(html), source=f"oxylabs: {url}"))
     return signals
 
 
 def get_outbreak_signals(region: str = "all") -> List[OutbreakSignal]:
     """
     Main entry point. Returns a list of OutbreakSignal.
-    Uses real Oxylabs if credentials are present, otherwise mock signals.
+
+    Each Oxylabs product is used where it's strong: the Residential Proxy fetches
+    server-rendered news RSS (the actionable dengue/flu/malaria/gastro trends);
+    the Web Scraper API renders JS-heavy official pages (WHO/MoH). Falls back to
+    mock signals if the live toggle is off, nothing is configured, or nothing is
+    extracted.
     """
-    if config.OXYLABS_USERNAME and config.OXYLABS_PASSWORD:
-        urls = [
-            # Replace with the real advisory / news / weather pages you target.
-            "https://example.com/health-advisories",
-        ]
-        real = _fetch_real(urls)
-        if real:
-            return real
-        # fall through to mock if extraction not implemented yet
-    return list(_MOCK_SIGNALS)
+    if not config.use_live_signals():
+        return list(_MOCK_SIGNALS)
+
+    signals: List[OutbreakSignal] = []
+    if config.oxylabs_proxies():
+        signals += _fetch_real(NEWS_FEEDS, _fetch_via_proxy)
+    if config.oxylabs_scraper_auth():
+        signals += _fetch_real(OFFICIAL_SOURCES, _fetch_via_scraper)
+    return signals if signals else list(_MOCK_SIGNALS)
+
+
+# Server-rendered news RSS (fetched via the Residential Proxy), one query per
+# driver disease. Swap/extend for the region and languages you're targeting.
+NEWS_FEEDS: List[str] = [
+    "https://news.google.com/rss/search?q=dengue+outbreak+Singapore+OR+Malaysia+OR+Indonesia+when:21d&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=influenza+flu+outbreak+Asia+when:21d&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=malaria+outbreak+Asia+when:21d&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=cholera+OR+gastroenteritis+outbreak+flooding+Asia+when:21d&hl=en-US&gl=US&ceid=US:en",
+]
+
+# JS-heavy authoritative pages (fetched via the Web Scraper API's JS rendering).
+OFFICIAL_SOURCES: List[str] = [
+    "https://www.who.int/emergencies/disease-outbreak-news",
+]
 
 
 def forecast_multipliers(region: str = "all") -> Dict[str, float]:
@@ -90,9 +231,13 @@ def forecast_multipliers(region: str = "all") -> Dict[str, float]:
     multipliers: Dict[str, float] = {}
     for sig in get_outbreak_signals(region):
         if sig.trend == "rising":
-            multipliers[sig.disease] = round(1.0 + sig.strength, 2)
+            m = round(1.0 + sig.strength, 2)
         elif sig.trend == "falling":
-            multipliers[sig.disease] = round(max(0.5, 1.0 - sig.strength), 2)
+            m = round(max(0.5, 1.0 - sig.strength), 2)
         else:
-            multipliers[sig.disease] = 1.0
+            m = 1.0
+        # A disease can appear in several signals (different regions/sources).
+        # Keep the strongest so a credible "rising" report isn't overwritten by
+        # a later "steady" one — order ahead if any source says it's climbing.
+        multipliers[sig.disease] = max(multipliers.get(sig.disease, 0.0), m)
     return multipliers

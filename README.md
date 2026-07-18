@@ -1,7 +1,7 @@
 # Vantage — clinic triage + restock copilot
 
 > Hackathon 2026 project. An AI copilot for rural clinics with **no doctor on
-> site**. Built on five sponsor tools: **Kimi AI, Oxylabs, Nosana, Doubleword,
+> site**. Built on five sponsor tools: **Kimi AI, Oxylabs, Nosana, ai&,
 > Datona.**
 
 This README is the single source of truth for the whole team. It's written so
@@ -81,7 +81,7 @@ Think of it as a tiny clinic team, where each app is one "staff member":
                   └──────────────┘
 
   Runs on:  Nosana (hosts the AI model)   Datona (consent-controlled records)
-  Tested by: Doubleword (offline bulk exam over thousands of fake patients)
+  Tested by: ai& (offline bulk exam over thousands of fake patients)
 ```
 
 Plain-English roles:
@@ -99,7 +99,7 @@ Plain-English roles:
 - **Nosana = the building** the AI model runs in (rented GPU instead of big
   cloud).
 - **Datona = the locked filing cabinet** for patient records + consent.
-- **Doubleword = the exam** you pass before the demo — runs thousands of fake
+- **ai& = the exam** you pass before the demo — runs thousands of fake
   patients through the triage tool to prove it escalates when it should.
   **Offline; never part of a live patient chat.**
 
@@ -138,7 +138,7 @@ python tests/make_test_batch.py     # prints a safety score, writes the JSONL ba
 | `tools/escalation.py` | When to stop guessing and call a doctor | safety officer | Person A |
 | `tools/restock.py` | Medicine reorder amounts | supply manager | Person B |
 | `signals/oxylabs.py` | Fetches outbreak/weather news | **Oxylabs** runner | Person B |
-| `tests/make_test_batch.py` | Offline exam over fake patients | **Doubleword** | Person C |
+| `tests/make_test_batch.py` | Offline exam over fake patients | **ai&** | Person C |
 | `config.py` | All keys + service URLs in one place | settings drawer | shared |
 | `.env.example` | Template for secrets (copy to `.env`) | — | shared |
 
@@ -147,7 +147,7 @@ start simple, make them smarter later without touching anything else.
 
 ## 6. The one idea that makes integration easy
 
-**Kimi, Nosana, and Doubleword all speak the same "OpenAI" API language.** The
+**Kimi, Nosana, and ai& all speak the same "OpenAI" API language.** The
 same few lines talk to all three — you only swap the URL and key:
 
 ```python
@@ -175,10 +175,15 @@ export KIMI_API_KEY=sk-...
 python main.py            # now uses real LLM tool-calling
 ```
 
-**2. Oxylabs (outbreak signals).** Set credentials, then implement the page
-parsing in `signals/oxylabs.py → _fetch_real` (there's a clear `TODO`).
+**2. Oxylabs (outbreak signals).** Uses the **Residential Proxy** to fetch
+server-rendered news feeds, then the active LLM brain extracts structured
+outbreak signals (`signals/oxylabs.py → _fetch_real` → `_extract_signals`). Just
+set the proxy credentials — no code changes needed. Country is encoded in the
+username (e.g. `customer-<user>-cc-US`); adjust `OUTBREAK_FEEDS` for your region.
 ```bash
-export OXYLABS_USERNAME=...   export OXYLABS_PASSWORD=...
+export OXYLABS_USERNAME=customer-<user>-cc-US
+export OXYLABS_PASSWORD=...
+export OXYLABS_PROXY=pr.oxylabs.io:7777   # optional; this is the default
 ```
 
 **3. Nosana (host the model).** Deploy a model at <https://deploy.nosana.com>,
@@ -188,9 +193,10 @@ export NOSANA_BASE_URL=https://<your-id>.node.k8s.prod.nos.ci/v1
 python main.py            # same app, now on decentralized GPU
 ```
 
-**4. Doubleword (bulk testing).** Key, then batch submission is automatic:
+**4. ai& (bulk testing).** OpenAI-compatible — set the key and the test script
+runs each patient through ai& inference automatically:
 ```bash
-export DOUBLEWORD_API_KEY=...
+export AIAND_API_KEY=sk-...
 python tests/make_test_batch.py
 ```
 
@@ -239,7 +245,7 @@ These rules keep everyone's output compatible:
 2. Flip on real Kimi.
 3. Make Oxylabs signals real.
 4. Add a Streamlit web UI.
-5. Move to Nosana + run the Doubleword batch + wire Datona.
+5. Move to Nosana + run the ai& safety batch + wire Datona.
 
 Steps 1–2 already give a working demo; the rest is polish and sponsor coverage.
 
@@ -260,6 +266,6 @@ Steps 1–2 already give a working demo; the rest is polish and sponsor coverage
   before building around it.
 - **Triage knowledge base:** the current symptom→condition weights in
   `tools/triage.py` are a hand-built starter. Decide whether to expand them,
-  or replace with an LLM-based assessor validated via Doubleword.
+  or replace with an LLM-based assessor validated via ai&.
 - **Regions:** the outbreak signals are per-region; decide which specific
   countries/provinces to target for the demo.

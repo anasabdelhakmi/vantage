@@ -10,6 +10,7 @@ Then type things like:
 """
 
 import agent
+import config
 
 
 BANNER = r"""
@@ -29,6 +30,10 @@ def main():
     if mode == "mock":
         print("(No API key set — using the built-in offline brain.)")
         print("  To use real Kimi: export KIMI_API_KEY=sk-...  then rerun.")
+    else:
+        print()
+    signals = "LIVE (Oxylabs)" if config.use_live_signals() else "MOCK (instant)"
+    print(f"  Outbreak signals: {signals}.  Toggle with USE_LIVE_SIGNALS=true|false")
     print("  Type a patient's symptoms or a supply question. Type 'quit' to exit.\n")
 
     while True:

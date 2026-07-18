@@ -2,6 +2,7 @@
 # The app RUNS WITH NONE OF THESE in mock mode (pure standard library).
 # Install these only when you switch on the real sponsor services.
 
-openai>=1.0.0     # talks to Kimi, Nosana endpoints, and Doubleword (all OpenAI-compatible)
+openai>=1.0.0     # talks to Kimi, Nosana endpoints, and ai& (all OpenAI-compatible)
 requests>=2.28    # used by the real Oxylabs fetcher
 streamlit>=1.30   # optional: for the simple web UI (see README "Step 5")
+daytona>=0.100    # optional: secure sandbox for running the agent in isolation
