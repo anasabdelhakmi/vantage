@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Secrets — never commit API keys
+.env
+*.key
+
+# Generated test artifacts
+tests/patient_batch.jsonl
+tests/*_output.jsonl
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
