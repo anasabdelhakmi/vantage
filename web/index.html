@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vantage — clinic copilot</title>
+
+  <!-- Leaflet (map). Rendered on a plain light canvas; no tiles required. -->
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+             stroke-linejoin="round">
+          <path d="M12 21s-7-4.35-9.5-8.5C.5 9 2 5 6 5c2 0 3 1 4 2.5C11 6 12 5 14 5c4 0 5.5 4 3.5 7.5C15 16.65 12 21 12 21z"/>
+          <path d="M4.5 12h4l1.5-3 2.5 6 1.5-3h5.5"/>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <strong>Vantage</strong>
+        <small>clinic triage + restock copilot</small>
+      </div>
+    </div>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="copilot" role="tab">Copilot</button>
+      <button class="tab" data-view="guide" role="tab">Field Guide</button>
+    </nav>
+
+    <div class="status" id="status">
+      <span class="pill" id="pill-mode">brain: …</span>
+      <span class="pill" id="pill-signals">signals: …</span>
+    </div>
+  </header>
+
+  <!-- ===================== COPILOT VIEW ===================== -->
+  <main class="view active" id="view-copilot">
+    <section class="col chat-col">
+      <div class="card chat-card">
+        <div class="card-head">
+          <h2>Health worker copilot</h2>
+          <p class="sub">Type a patient's symptoms, or ask a supply question.</p>
+        </div>
+
+        <div class="chat" id="chat"></div>
+
+        <div class="suggestions" id="suggestions">
+          <button class="chip">fever, headache and body aches</button>
+          <button class="chip">fever, rash and bleeding gums</button>
+          <button class="chip">cough and sore throat</button>
+          <button class="chip">what should we reorder this month?</button>
+        </div>
+
+        <form class="composer" id="composer" autocomplete="off">
+          <input id="input" type="text"
+                 placeholder="e.g. fever, chills and heavy sweating…" />
+          <button type="submit" id="send" aria-label="Send">Send</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="col side-col">
+      <div class="card map-card">
+        <div class="card-head">
+          <h2>Focus areas</h2>
+          <p class="sub" id="map-sub">Deployment areas across South-East Asia</p>
+        </div>
+        <div id="map"></div>
+        <div class="legend">
+          <span><i class="dot selected"></i>Selected</span>
+          <span><i class="dot focus"></i>Deployment area</span>
+          <span><i class="dot home"></i>Home base</span>
+          <span><i class="dot neighbour"></i>Neighbour</span>
+        </div>
+      </div>
+
+      <div class="card signals-card">
+        <div class="card-head row">
+          <div>
+            <h2>Outbreak signals</h2>
+            <p class="sub" id="signals-sub">forward-looking demand drivers</p>
+          </div>
+          <button class="ghost" id="refresh-signals">Refresh</button>
+        </div>
+        <div id="signals" class="signals"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== FIELD GUIDE VIEW ===================== -->
+  <main class="view" id="view-guide">
+    <div class="guide-intro">
+      <h2>Field Guide</h2>
+      <p>Quick, plain-language notes on the diseases that drive care and supply
+         in our focus areas. A training aid for community health workers —
+         <strong>not a substitute for a doctor.</strong> When you see a
+         <span class="danger-word">danger sign</span>, escalate.</p>
+    </div>
+    <div class="guide-grid" id="guide-grid"></div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

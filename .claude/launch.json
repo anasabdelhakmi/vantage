@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vantage-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-u", "app.py"],
+      "port": 8000,
+      "autoPort": true,
+      "env": { "LLM_PROVIDER": "mock", "USE_LIVE_SIGNALS": "false" }
+    }
+  ]
+}

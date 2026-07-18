@@ -36,10 +36,23 @@ consent. See `README.md` §3 for the architecture.
 4. Handle it in `_run_mock()` so offline mode still responds.
 5. Add a case to `tests/make_test_batch.py` if it affects safety.
 
+## Web UI (`app.py` + `web/`)
+
+`app.py` is a **standard-library-only** web server (no Flask/Streamlit) that
+wraps the existing brain — it calls `agent.ask()` and reads `signals.oxylabs`,
+so it obeys golden rule #1 (runs with `python app.py`, no pip install). The
+frontend is plain HTML/CSS/JS in `web/` (light, blue, clean). It has a Copilot
+chat, a per-country outbreak-signals panel, a click-to-select focus-country map
+(Leaflet), and an educational Field Guide. **The single `FOCUS` list at the top
+of `app.py` is the source of truth** for which countries the map, signals, and
+guide use — served to the frontend at `/api/config`. Keep server imports of
+`openai`/`requests` inside functions, same as everywhere else.
+
 ## How to verify your change
 
 ```bash
 python main.py                     # must start in MOCK mode with no keys
+python app.py                      # web UI; open http://localhost:8000
 python tests/make_test_batch.py    # safety score should be full marks
 python -m compileall -q .          # no syntax errors
 ```

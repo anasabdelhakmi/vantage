@@ -18,3 +18,6 @@ tests/*_output.jsonl
 .DS_Store
 .idea/
 .vscode/
+
+# Claude Code — keep shared launch config, ignore per-machine local settings
+.claude/settings.local.json

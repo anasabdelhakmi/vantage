@@ -230,8 +230,23 @@ mock fallback when unset:
 export DAYTONA_API_KEY=dtn_...
 ```
 
-**Optional — web UI.** Fastest is Streamlit: a one-file `app.py` calling
-`agent.ask(msg)`, run with `streamlit run app.py`. Not built yet — see roadmap.
+**Web UI.** Built and dependency-free — `app.py` is a tiny standard-library
+web server that wraps `agent.ask(msg)` plus the outbreak signals, so it runs
+with no `pip install`, same as mock mode:
+
+```bash
+python app.py            # then open http://localhost:8000
+PORT=9000 python app.py  # pick another port
+```
+
+It's a clean, light, blue single page with four parts: a **Copilot** chat
+(triage + restock, red-flagged escalations); a **focus-area map** of our
+South-East-Asian deployment countries — **click a country to select it** (it
+highlights, no popups); an **Outbreak signals** panel that lists the selected
+country first, then its neighbours, with each disease's forward-looking demand
+multiplier; and a **Field Guide** — educational disease notes (dengue, malaria,
+gastro/cholera, flu) for those areas. Retarget the map, signals, and guide by
+editing the single `FOCUS` list at the top of `app.py`.
 
 ## 8. How the team works together
 
@@ -273,7 +288,7 @@ These rules keep everyone's output compatible:
 3. Real Oxylabs signals — Web Scraper API + Residential Proxy + LLM extraction. ✅
 4. ai& safety test via structured tool-calling (8/8). ✅
 5. Daytona sandbox wired (`sandbox/daytona.py`). ✅
-6. Add a Streamlit web UI. ⬜
+6. Web UI — dependency-free `app.py` (copilot chat + signals + focus map + Field Guide). ✅
 7. Optional: deploy a model on Nosana; confirm the "Datona" consent product. ⬜
 
 The full loop works end-to-end today; remaining items are polish and coverage.
