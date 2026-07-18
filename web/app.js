@@ -30,15 +30,24 @@ async function init() {
 // ---------------------------------------------------------------------------
 function wireTabs() {
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      const view = tab.dataset.view;
-      $("#view-copilot").classList.toggle("active", view === "copilot");
-      $("#view-guide").classList.toggle("active", view === "guide");
-      if (view === "copilot") setTimeout(fitMap, 60);
-    });
+    tab.addEventListener("click", () => showView(tab.dataset.view));
   });
+  // The About page's "Launch Vantage" buttons jump into the copilot.
+  document.querySelectorAll("[data-goto]").forEach((el) => {
+    el.addEventListener("click", () => showView(el.dataset.goto));
+  });
+}
+
+// Switch the active tab + view. Generic over any <main class="view" id="view-X">
+// so new pages (like About) work without editing this function again.
+function showView(view) {
+  document.querySelectorAll(".tab").forEach((t) =>
+    t.classList.toggle("active", t.dataset.view === view)
+  );
+  document.querySelectorAll("main.view").forEach((v) =>
+    v.classList.toggle("active", v.id === `view-${view}`)
+  );
+  if (view === "copilot") setTimeout(fitMap, 60);
 }
 
 function paintStatus() {
