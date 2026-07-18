@@ -1,8 +1,8 @@
 # Vantage — clinic triage + restock copilot
 
 > Hackathon 2026 project. An AI copilot for rural clinics with **no doctor on
-> site**. Built on five sponsor tools: **Kimi AI, Oxylabs, Nosana, ai&,
-> Datona.**
+> site**. Built on sponsor tools: **ai&, Oxylabs, Daytona, Nosana, Kimi AI**
+> (any OpenAI-compatible model can drive it).
 
 This README is the single source of truth for the whole team. It's written so
 that **any teammate — and any coding assistant (Claude Code, Cursor, Kimi Code,
@@ -64,8 +64,8 @@ Think of it as a tiny clinic team, where each app is one "staff member":
                         |
                         v
         ┌───────────────────────────────┐
-        │  Kimi K3  — the coordinator    │  <- the only part the worker talks to
-        │  decides which tool to call    │
+        │  AI coordinator                │  <- the only part the worker talks to
+        │  (ai& / OpenAI / Kimi / Nosana)│     decides which tool to call
         └───────────────────────────────┘
            |            |             |
            v            v             v
@@ -77,17 +77,19 @@ Think of it as a tiny clinic team, where each app is one "staff member":
                         ^
                         |  outbreak + weather signals
                   ┌──────────────┐
-                  │   Oxylabs    │
+                  │   Oxylabs    │  Web Scraper API + Residential Proxy
                   └──────────────┘
 
-  Runs on:  Nosana (hosts the AI model)   Datona (consent-controlled records)
-  Tested by: ai& (offline bulk exam over thousands of fake patients)
+  Runs on:  Nosana (optional GPU host)   Daytona (secure sandbox)
+  Tested by: ai& (offline bulk exam over many fake patients)
 ```
 
 Plain-English roles:
 
-- **Kimi = coordinator.** Talks to the worker, picks which tool to call, relays
-  results in plain language. Doesn't diagnose or count medicines itself.
+- **Coordinator (the brain) = the doctor's front desk.** Talks to the worker,
+  picks which tool to call, relays results in plain language. Doesn't diagnose or
+  count medicines itself. Any OpenAI-compatible model runs it — **ai&** (current
+  default), OpenAI, Kimi, or a Nosana-hosted model — selected via `LLM_PROVIDER`.
 - **Triage tool = the nurse.** Keeps a running "best guess" of the illness and
   picks the single most useful next question.
 - **Escalation check = the safety officer.** Decides when to stop guessing and
@@ -95,13 +97,19 @@ Plain-English roles:
   no useful question left).
 - **Restock tool = the supply manager.** Turns outbreak forecasts into medicine
   reorder amounts. Nothing to do with the patient in the chat.
-- **Oxylabs = the runner** who fetches outside news (outbreak, weather).
-- **Nosana = the building** the AI model runs in (rented GPU instead of big
-  cloud).
-- **Datona = the locked filing cabinet** for patient records + consent.
-- **ai& = the exam** you pass before the demo — runs thousands of fake
-  patients through the triage tool to prove it escalates when it should.
-  **Offline; never part of a live patient chat.**
+- **Oxylabs = the runner** who fetches outside news (outbreak, weather). Two
+  products: the **Web Scraper API** (renders JavaScript → official WHO/MoH pages)
+  and the **Residential Proxy** (fast raw HTML → news RSS feeds). The active brain
+  then extracts structured outbreak signals from what it fetches.
+- **Nosana = the building** the AI model can run in (rented GPU instead of big
+  cloud). Optional — the app runs on any brain.
+- **Daytona = the locked room** — a secure sandbox to run agent code in isolation
+  (`sandbox/daytona.py`). *(The original "Datona" consent-record product is still
+  undefined — see Open questions.)*
+- **ai& = the exam** you pass before the demo — runs many fake patients through
+  the triage tool via structured tool-calling to prove it escalates when it
+  should. **Offline; never part of a live patient chat.** (ai& also doubles as
+  the default coordinator brain.)
 
 ## 4. Run it right now (no keys)
 
@@ -128,18 +136,31 @@ Run the safety exam over many fake patients:
 python tests/make_test_batch.py     # prints a safety score, writes the JSONL batch
 ```
 
+**Live vs mock outbreak signals.** With keys set, the restock tool pulls real
+outbreak news through Oxylabs and extracts signals with the LLM (a few seconds).
+Flip it off for an instant, deterministic demo:
+
+```bash
+USE_LIVE_SIGNALS=false python main.py   # instant mock signals
+USE_LIVE_SIGNALS=true  python main.py   # live Oxylabs → forecast-adjusted restock
+```
+
+The banner shows which mode you're in. Pick the brain with `LLM_PROVIDER`
+(`aiand` | `openai` | `kimi` | `nosana` | `mock`; blank = auto-detect).
+
 ## 5. Project layout — who owns what
 
 | File | Plain-English job | "Staff member" | Suggested owner |
 |---|---|---|---|
 | `main.py` | The terminal chat you type into | front desk | — |
-| `agent.py` | Picks which tool to call, replies in plain language | **Kimi** coordinator | Person A |
+| `agent.py` | Picks which tool to call, replies in plain language | coordinator (any brain) | Person A |
 | `tools/triage.py` | Best-guess of the illness + next question | the nurse | Person A |
 | `tools/escalation.py` | When to stop guessing and call a doctor | safety officer | Person A |
 | `tools/restock.py` | Medicine reorder amounts | supply manager | Person B |
-| `signals/oxylabs.py` | Fetches outbreak/weather news | **Oxylabs** runner | Person B |
-| `tests/make_test_batch.py` | Offline exam over fake patients | **ai&** | Person C |
-| `config.py` | All keys + service URLs in one place | settings drawer | shared |
+| `signals/oxylabs.py` | Fetches + extracts outbreak/weather signals | **Oxylabs** runner | Person B |
+| `sandbox/daytona.py` | Secure sandbox to run agent code | **Daytona** | Person B |
+| `tests/make_test_batch.py` | Offline safety exam over fake patients | **ai&** | Person C |
+| `config.py` | All keys, brains + service URLs in one place | settings drawer | shared |
 | `.env.example` | Template for secrets (copy to `.env`) | — | shared |
 
 Everything routes through `agent.py`. The tools are **plain Python functions** —
@@ -147,8 +168,8 @@ start simple, make them smarter later without touching anything else.
 
 ## 6. The one idea that makes integration easy
 
-**Kimi, Nosana, and ai& all speak the same "OpenAI" API language.** The
-same few lines talk to all three — you only swap the URL and key:
+**ai&, OpenAI, Kimi, and Nosana all speak the same "OpenAI" API language.** The
+same few lines talk to all of them — you only swap the URL and key:
 
 ```python
 from openai import OpenAI
@@ -156,9 +177,10 @@ client = OpenAI(api_key=KEY, base_url=BASE_URL)   # swap these two, nothing else
 client.chat.completions.create(model=MODEL, messages=[...])
 ```
 
-So learn it once and 3 of the 5 sponsors work the same way. `config.py` already
-centralizes the URLs/keys, and `config.active_llm()` auto-picks mock / Kimi /
-Nosana based on what's set.
+So learn it once and the coordinator works on any of them. `config.py`
+centralizes the URLs/keys, and `config.active_llm()` picks the brain from
+`LLM_PROVIDER` (or auto-detects from whatever key is set), falling back to a
+built-in mock brain when nothing is configured.
 
 ## 7. Turning on each sponsor service
 
@@ -169,39 +191,44 @@ pip install -r requirements.txt
 cp .env.example .env      # then fill in whichever keys you have
 ```
 
-**1. Kimi (the brain).** Key from <https://platform.moonshot.ai>.
+**1. The brain (ai& / OpenAI / Kimi / Nosana).** All OpenAI-compatible — set a
+key and pick it with `LLM_PROVIDER`. **ai&** is the current default.
 ```bash
-export KIMI_API_KEY=sk-...
-python main.py            # now uses real LLM tool-calling
+export AIAND_API_KEY=sk-...      # ai& (https://docs.aiand.com)
+export LLM_PROVIDER=aiand        # or: openai | kimi | nosana | mock
+python main.py                   # real LLM tool-calling
 ```
+Others: `OPENAI_API_KEY` (`OPENAI_MODEL=gpt-4o`), `KIMI_API_KEY`
+(`KIMI_MODEL=kimi-k3`; **kimi-k2 was discontinued**), or `NOSANA_BASE_URL` to
+run an open model on decentralized GPU (<https://deploy.nosana.com>).
 
-**2. Oxylabs (outbreak signals).** Uses the **Residential Proxy** to fetch
-server-rendered news feeds, then the active LLM brain extracts structured
-outbreak signals (`signals/oxylabs.py → _fetch_real` → `_extract_signals`). Just
-set the proxy credentials — no code changes needed. Country is encoded in the
-username (e.g. `customer-<user>-cc-US`); adjust `OUTBREAK_FEEDS` for your region.
+**2. Oxylabs (outbreak signals).** Two products, each used where it's strong. The
+active brain then extracts structured signals from what's fetched
+(`signals/oxylabs.py`). Set **either** — the app prefers the proxy for news RSS
+and the Web Scraper API for JS-heavy official pages:
 ```bash
-export OXYLABS_USERNAME=customer-<user>-cc-US
-export OXYLABS_PASSWORD=...
-export OXYLABS_PROXY=pr.oxylabs.io:7777   # optional; this is the default
+# Web Scraper API — JS rendering, official sources (WHO/MoH)
+export OXYLABS_SCRAPER_USERNAME=...   export OXYLABS_SCRAPER_PASSWORD=...
+# Residential Proxy — fast raw HTML, news RSS. Country is in the username.
+export OXYLABS_USERNAME=customer-<user>-cc-US   export OXYLABS_PASSWORD=...
+export OXYLABS_PROXY=pr.oxylabs.io:7777         # optional; default
 ```
+Toggle live fetching with `USE_LIVE_SIGNALS=true|false`; edit `NEWS_FEEDS` /
+`OFFICIAL_SOURCES` in `signals/oxylabs.py` to retarget regions.
 
-**3. Nosana (host the model).** Deploy a model at <https://deploy.nosana.com>,
-copy the endpoint URL, then:
-```bash
-export NOSANA_BASE_URL=https://<your-id>.node.k8s.prod.nos.ci/v1
-python main.py            # same app, now on decentralized GPU
-```
-
-**4. ai& (bulk testing).** OpenAI-compatible — set the key and the test script
-runs each patient through ai& inference automatically:
+**3. ai& (safety testing).** Structured tool-calling gives a reliable escalate
+flag — the test script runs each patient through ai& automatically:
 ```bash
 export AIAND_API_KEY=sk-...
 python tests/make_test_batch.py
 ```
 
-**5. Datona (consent layer).** Confirm the exact product with the organizers,
-then store/guard patient records through it. Until then, records live in memory.
+**4. Daytona (secure sandbox).** Create a key in the Daytona dashboard, then the
+sandbox helper (`sandbox/daytona.py`) runs agent code in isolation, with a local
+mock fallback when unset:
+```bash
+export DAYTONA_API_KEY=dtn_...
+```
 
 **Optional — web UI.** Fastest is Streamlit: a one-file `app.py` calling
 `agent.ask(msg)`, run with `streamlit run app.py`. Not built yet — see roadmap.
@@ -241,13 +268,15 @@ These rules keep everyone's output compatible:
 
 ## 10. Build roadmap
 
-1. Run mock mode, read `agent.py` — understand the loop. ✅ (done, works)
-2. Flip on real Kimi.
-3. Make Oxylabs signals real.
-4. Add a Streamlit web UI.
-5. Move to Nosana + run the ai& safety batch + wire Datona.
+1. Run mock mode, read `agent.py` — understand the loop. ✅
+2. Real LLM tool-calling brain (multi-provider, default ai&). ✅
+3. Real Oxylabs signals — Web Scraper API + Residential Proxy + LLM extraction. ✅
+4. ai& safety test via structured tool-calling (8/8). ✅
+5. Daytona sandbox wired (`sandbox/daytona.py`). ✅
+6. Add a Streamlit web UI. ⬜
+7. Optional: deploy a model on Nosana; confirm the "Datona" consent product. ⬜
 
-Steps 1–2 already give a working demo; the rest is polish and sponsor coverage.
+The full loop works end-to-end today; remaining items are polish and coverage.
 
 ## 11. How this maps to the judging criteria
 
@@ -257,13 +286,15 @@ Steps 1–2 already give a working demo; the rest is polish and sponsor coverage
   frontline healthcare, not another retrieval chatbot.
 - **Real-world fit** — built for Singapore's actual neighbourhood: cross-border
   supply, thin specialist coverage, seasonal outbreaks.
-- **Sponsor usage** — every sponsor is on the critical path (orchestration, live
-  signals, compute, batch validation, consent), not bolted on.
+- **Sponsor usage** — every sponsor is on the critical path (orchestration by the
+  brain, live signals via Oxylabs, safety validation via ai&, isolation via
+  Daytona, optional compute via Nosana), not bolted on.
 
 ## 12. Open questions
 
-- **Datona:** confirm exactly what product/API it provides at this hackathon
-  before building around it.
+- **Datona vs Daytona:** we wired **Daytona** as a secure code sandbox
+  (`sandbox/daytona.py`). The originally-planned "Datona" consent-record product
+  is still undefined — confirm what it actually provides before building on it.
 - **Triage knowledge base:** the current symptom→condition weights in
   `tools/triage.py` are a hand-built starter. Decide whether to expand them,
   or replace with an LLM-based assessor validated via ai&.
