@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/i18n.ts","./src/main.tsx","./src/vite-env.d.ts","./src/api/agent.ts","./src/api/doctorcall.ts","./src/components/doctorcall.tsx","./src/components/facelogin.tsx","./src/components/languagepicker.tsx","./src/components/voiceagent.tsx","./src/hooks/usespeechsynthesis.ts"],"version":"5.9.3"}
