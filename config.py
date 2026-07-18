@@ -132,6 +132,16 @@ def daytona_enabled():
     return bool(DAYTONA_API_KEY)
 
 
+# ---------------------------------------------------------------------------
+# Doctor video call (Jitsi). A FIXED standing room so the on-call doctor can
+# keep it open on their phone and always be reachable — every escalation joins
+# the SAME room. Override DOCTOR_ROOM in .env to set your own.
+# Because the room is persistent, the name is the only lock on the call: keep
+# it unguessable and NEVER put patient names/IDs in it (it's visible in the URL).
+# ---------------------------------------------------------------------------
+DOCTOR_ROOM = os.environ.get("DOCTOR_ROOM", "vantage-oncall-q7f39kzt4m").strip()
+
+
 # Optional: force a specific brain (kimi | aiand | nosana | mock). Leave blank
 # for auto-detect. Handy when a provider is set but unavailable (e.g. Kimi has
 # no balance) and you want to run the agent on ai& instead.

@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 
 import agent
 import config
+from tools import doctor_call
 
 # ---------------------------------------------------------------------------
 # THE ONE KNOB: which South-East-Asian areas this deployment focuses on.
@@ -270,10 +271,34 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "empty message"}, status=400)
             return
         try:
-            reply = agent.ask(message)
+            result = agent.ask_web(message)   # {reply, escalate}
         except Exception as e:
-            reply = f"(error running the brain: {e})"
-        self._send_json({"reply": reply, "mode": agent.current_mode()})
+            result = {"reply": f"(error running the brain: {e})", "escalate": False}
+        payload = {"reply": result["reply"], "mode": agent.current_mode(),
+                   "escalate": result["escalate"]}
+        # On escalation, hand the UI a fresh private video room for the doctor.
+        if payload["escalate"]:
+            payload["call"] = doctor_call.make_doctor_room()
+        self._send_json(payload)
+
+
+def _prewarm_signals():
+    """Warm the live-signals cache in the background at startup, so the first
+    time someone opens the Copilot/Restock tab the data is already there
+    instead of waiting ~30s for the live scrape."""
+    if not config.use_live_signals():
+        return
+    import threading
+
+    def _run():
+        try:
+            from signals.oxylabs import get_outbreak_signals
+            get_outbreak_signals("all")
+            print("  [signals] live outbreak cache warmed.")
+        except Exception as e:
+            print(f"  [signals] prewarm failed (will fetch on demand): {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def main():
@@ -282,9 +307,10 @@ def main():
     url = f"http://localhost:{port}"
     mode = agent.current_mode()
     signals = "LIVE (Oxylabs)" if config.use_live_signals() else "MOCK (instant)"
-    print("\n  Vantage web UI")
+    print("\n  VCare web UI")
     print(f"  Brain: {mode.upper()}   Signals: {signals}")
     print(f"  Open:  {url}\n  (Ctrl-C to stop)\n")
+    _prewarm_signals()   # background: fill the signals cache before it's asked for
     try:
         webbrowser.open(url)
     except Exception:

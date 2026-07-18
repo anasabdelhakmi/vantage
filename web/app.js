@@ -1,4 +1,4 @@
-/* Vantage web UI — frontend logic.
+/* VCare web UI — frontend logic.
    Talks to the tiny JSON API in app.py, which wraps the existing brain.
    No framework, no build step. */
 
@@ -13,6 +13,8 @@ init();
 async function init() {
   wireTabs();
   wireChat();
+  wireCall();
+  wireRestock();
   try {
     CONFIG = await fetch("/api/config").then((r) => r.json());
   } catch (e) {
@@ -32,7 +34,7 @@ function wireTabs() {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => showView(tab.dataset.view));
   });
-  // The About page's "Launch Vantage" buttons jump into the copilot.
+  // The About page's "Launch VCare" buttons jump into the copilot.
   document.querySelectorAll("[data-goto]").forEach((el) => {
     el.addEventListener("click", () => showView(el.dataset.goto));
   });
@@ -48,6 +50,7 @@ function showView(view) {
     v.classList.toggle("active", v.id === `view-${view}`)
   );
   if (view === "copilot") setTimeout(fitMap, 60);
+  if (view === "restock") loadRestock();   // lazy: fetched on first open
 }
 
 function paintStatus() {
@@ -74,10 +77,33 @@ function wireChat() {
   });
 }
 
+function wireRestock() {
+  $("#refresh-restock").addEventListener("click", () => loadRestock(true));
+}
+
+function wireCall() {
+  $("#call-close").addEventListener("click", closeCall);
+  // Click the dark backdrop (outside the box) to end the call.
+  $("#call-modal").addEventListener("click", (e) => {
+    if (e.target.id === "call-modal") closeCall();
+  });
+  $("#call-copy").addEventListener("click", async () => {
+    const link = $("#call-link").value;
+    try {
+      await navigator.clipboard.writeText(link);
+      const b = $("#call-copy");
+      b.textContent = "Copied";
+      setTimeout(() => (b.textContent = "Copy"), 1400);
+    } catch (e) {
+      $("#call-link").select();
+    }
+  });
+}
+
 function greet() {
   addMsg(
     "bot",
-    "Hi — I'm Vantage. Tell me a patient's symptoms and I'll assess them and " +
+    "Hi — I'm VCare. Tell me a patient's symptoms and I'll assess them and " +
       "flag when to call a doctor, or ask me what to reorder this month."
   );
 }
@@ -89,6 +115,62 @@ function addMsg(who, text, opts = {}) {
   $("#chat").appendChild(el);
   $("#chat").scrollTop = $("#chat").scrollHeight;
   return el;
+}
+
+// When triage escalates, drop a one-tap "connect to a doctor" action into the
+// chat. Tapping it opens a live video consult (embedded Jitsi room).
+function addCallButton(call) {
+  const wrap = document.createElement("div");
+  wrap.className = "call-action";
+  const btn = document.createElement("button");
+  btn.className = "call-btn";
+  btn.innerHTML = `<span class="call-btn-ico">📞</span> Connect to a doctor`;
+  btn.addEventListener("click", () => openCall(call));
+  wrap.appendChild(btn);
+  $("#chat").appendChild(wrap);
+  $("#chat").scrollTop = $("#chat").scrollHeight;
+}
+
+// ---------------------------------------------------------------------------
+// Doctor video call — embedded Jitsi (public meet.jit.si infra).
+// ---------------------------------------------------------------------------
+let _jitsi = null;   // live JitsiMeetExternalAPI instance, so we can dispose it
+
+function openCall(call) {
+  const modal = $("#call-modal");
+  $("#call-room").textContent = "Room: " + call.room;
+  $("#call-link").value = call.url;
+  $("#call-open").href = call.url;
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+
+  const stage = $("#call-stage");
+  stage.innerHTML = "";
+  // If the Jitsi script loaded, embed the call in-page; otherwise the footer
+  // link ("Open in new tab") is the fallback — the call still works.
+  if (window.JitsiMeetExternalAPI) {
+    _jitsi = new JitsiMeetExternalAPI(call.host, {
+      roomName: call.room,
+      parentNode: stage,
+      width: "100%",
+      height: "100%",
+      configOverwrite: { prejoinPageEnabled: false, startWithAudioMuted: false },
+      userInfo: { displayName: "VCare — health worker" },
+    });
+    _jitsi.addEventListener("readyToClose", closeCall);
+  } else {
+    stage.innerHTML =
+      `<div class="call-fallback">Live embed needs internet. Use
+       <b>Open in new tab</b> below to start the video call.</div>`;
+  }
+}
+
+function closeCall() {
+  const modal = $("#call-modal");
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  if (_jitsi) { try { _jitsi.dispose(); } catch (e) {} _jitsi = null; }
+  $("#call-stage").innerHTML = "";
 }
 
 async function send(text) {
@@ -107,9 +189,11 @@ async function send(text) {
     }).then((r) => r.json());
     typing.remove();
     const reply = data.reply || "(no reply)";
-    // The mock/real brain marks escalation with [SAFETY]; colour those red.
-    const escalate = /\[safety\]|remote doctor|escalate/i.test(reply);
+    // The backend decides escalation authoritatively and, when it fires,
+    // hands us a fresh private video room for the doctor.
+    const escalate = !!data.escalate;
     addMsg("bot", reply, { escalate });
+    if (escalate && data.call && data.call.url) addCallButton(data.call);
   } catch (e) {
     typing.remove();
     addMsg("bot", "Sorry — I couldn't reach the brain. Is the server running?");
@@ -181,6 +265,72 @@ function renderSignals() {
   box.querySelectorAll(".sig-group-head").forEach((h) =>
     h.addEventListener("click", () => selectCountry(h.dataset.iso, true))
   );
+}
+
+// ---------------------------------------------------------------------------
+// Restock — forecast-adjusted reorder plan for the next 30 days.
+// Reads /api/restock (baseline usage × Oxylabs outbreak multiplier). Lazy:
+// only fetched when the tab is first opened, then cached (a live fetch is slow).
+// ---------------------------------------------------------------------------
+let RESTOCK = null;        // last payload
+let RESTOCK_LOADING = false;
+
+async function loadRestock(force = false) {
+  if (RESTOCK && !force) { renderRestock(); return; }   // use cache
+  if (RESTOCK_LOADING) return;
+  RESTOCK_LOADING = true;
+  const box = $("#restock");
+  box.innerHTML =
+    `<div class="empty">Calculating from ${
+      CONFIG && CONFIG.live_signals ? "live outbreak signals — this can take ~30s…" : "outbreak signals…"
+    }</div>`;
+  try {
+    RESTOCK = await fetch("/api/restock").then((r) => r.json());
+  } catch (e) {
+    box.innerHTML = `<div class="empty">Couldn't load the restock plan.</div>`;
+    RESTOCK_LOADING = false;
+    return;
+  }
+  RESTOCK_LOADING = false;
+  renderRestock();
+}
+
+function renderRestock() {
+  const box = $("#restock");
+  const orders = (RESTOCK && RESTOCK.orders) || [];
+  if (!orders.length) {
+    box.innerHTML = `<div class="empty">No restock recommendations.</div>`;
+    return;
+  }
+  $("#restock-sub").textContent = (CONFIG && CONFIG.live_signals)
+    ? "forecast-adjusted from live Oxylabs signals"
+    : "forecast-adjusted from mock signals";
+
+  // Sort most-urgent first (highest multiplier at the top).
+  const rows = orders.slice().sort((a, b) => (b.multiplier || 1) - (a.multiplier || 1));
+
+  box.innerHTML =
+    `<div class="rx-head">
+       <span>Medicine</span><span>Forecast</span><span class="rx-num">Order (30d)</span>
+     </div>` +
+    rows.map((o) => {
+      const m = o.multiplier || 1;
+      const tone = m > 1 ? "rising" : m < 1 ? "falling" : "steady";
+      const label = m > 1 ? "trending up" : m < 1 ? "easing" : "steady";
+      return `
+      <div class="rx">
+        <div class="rx-med">
+          <span class="rx-name">${escapeHtml((o.medicine || "").replace(/_/g, " "))}</span>
+          <span class="rx-reason">${escapeHtml(o.reason || "")}</span>
+        </div>
+        <div class="rx-forecast">
+          <span class="rx-mult ${tone}">×${m}</span>
+          <span class="rx-mlabel ${tone}">${label}</span>
+          <span class="rx-base">baseline ${o.baseline}/mo</span>
+        </div>
+        <div class="rx-order ${tone}">${o.order}<small>units</small></div>
+      </div>`;
+    }).join("");
 }
 
 // ---------------------------------------------------------------------------

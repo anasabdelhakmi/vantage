@@ -7,7 +7,7 @@
       "runtimeArgs": ["-u", "app.py"],
       "port": 8000,
       "autoPort": true,
-      "env": { "LLM_PROVIDER": "mock", "USE_LIVE_SIGNALS": "false" }
+      "env": { "LLM_PROVIDER": "aiand", "USE_LIVE_SIGNALS": "true" }
     }
   ]
 }

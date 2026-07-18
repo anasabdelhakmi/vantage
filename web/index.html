@@ -3,12 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vantage — clinic copilot</title>
+  <title>VCare — clinic copilot</title>
 
   <!-- Leaflet (map). Rendered on a plain light canvas; no tiles required. -->
   <link rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Jitsi Meet external API — embeds a live doctor video call in-page. -->
+  <script src="https://meet.jit.si/external_api.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -27,14 +30,16 @@
         </svg>
       </span>
       <div class="brand-text">
-        <strong>Vantage</strong>
+        <strong>VCare</strong>
         <small>clinic triage + restock copilot</small>
       </div>
     </div>
 
     <nav class="tabs" role="tablist">
       <button class="tab active" data-view="about" role="tab">About</button>
+      <button class="tab" data-view="architecture" role="tab">Architecture</button>
       <button class="tab" data-view="copilot" role="tab">Copilot</button>
+      <button class="tab" data-view="restock" role="tab">Restock</button>
       <button class="tab" data-view="guide" role="tab">Field Guide</button>
     </nav>
 
@@ -57,7 +62,7 @@
             medicine forecasting for rural clinics without on-site doctors.</p>
           <div class="ab-actions">
             <button class="ab-btn ab-btn-primary" data-goto="copilot">
-              Launch Vantage
+              Launch VCare
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12h14M13.5 6.5L19 12l-5.5 5.5"/></svg>
             </button>
             <a class="ab-btn ab-btn-ghost" href="https://github.com/anasabdelhakmi/vantage" target="_blank" rel="noreferrer">Learn more</a>
@@ -127,8 +132,8 @@
       </section>
 
       <!-- Workflow timeline -->
-      <section class="ab-timeline" aria-label="How Vantage works">
-        <span class="ab-kicker">How Vantage works</span>
+      <section class="ab-timeline" aria-label="How VCare works">
+        <span class="ab-kicker">How VCare works</span>
         <div class="ab-steps">
           <div class="ab-step" tabindex="0">
             <span class="ab-step-dot"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5a8.5 8.5 0 1 0-8.5-8.5c0 1.6.4 3 1.2 4.3L3.5 20.5l4.2-1.2a8.4 8.4 0 0 0 4.3 1.2z"/></svg></span>
@@ -161,11 +166,96 @@
       <section class="ab-cta">
         <h2>Safer triage in seconds.</h2>
         <button class="ab-btn ab-btn-light" data-goto="copilot">
-          Launch Vantage
+          Launch VCare
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12h14M13.5 6.5L19 12l-5.5 5.5"/></svg>
         </button>
       </section>
 
+    </div>
+  </main>
+
+  <!-- ===================== ARCHITECTURE VIEW ===================== -->
+  <main class="view" id="view-architecture">
+    <div class="arch">
+      <header class="arch-head">
+        <span class="ab-kicker">Architecture</span>
+        <h1>One coordinator, four specialist tools, five sponsors.</h1>
+        <p>The health worker only ever talks to the coordinator. It decides which
+           tool to call, runs each on the right sponsor service, and relays the
+           result in plain language — it never diagnoses or counts medicines itself.</p>
+      </header>
+
+      <!-- The decision loop -->
+      <section class="arch-flow" aria-label="Decision loop">
+        <div class="arch-lane">
+          <div class="arch-box worker">
+            <span class="arch-box-t">Health worker</span>
+            <span class="arch-box-s">types symptoms or a supply question</span>
+          </div>
+          <span class="arch-conn">→</span>
+          <div class="arch-box brain">
+            <span class="arch-tag">brain · ai&amp; / OpenAI / Kimi / Nosana</span>
+            <span class="arch-box-t">Coordinator</span>
+            <span class="arch-box-s">OpenAI-compatible tool-calling — picks a tool</span>
+          </div>
+        </div>
+
+        <div class="arch-tools">
+          <div class="arch-tool">
+            <span class="arch-tool-h">Triage <small>the nurse</small></span>
+            <p>Keeps a running best-guess of the illness and asks the single most
+               useful next question.</p>
+          </div>
+          <div class="arch-tool danger">
+            <span class="arch-tool-h">Escalation <small>the safety officer</small></span>
+            <p>On a danger sign or a too-weak guess, stops guessing and routes to a
+               <b>remote doctor over live video</b> (Jitsi).</p>
+          </div>
+          <div class="arch-tool oxy">
+            <span class="arch-tool-h">Restock <small>the supply manager</small></span>
+            <p>Turns <b>live Oxylabs</b> outbreak signals into demand multipliers and
+               orders medicine <b>ahead</b> of a surge.</p>
+          </div>
+          <div class="arch-tool day">
+            <span class="arch-tool-h">Calculation <small>the sandbox</small></span>
+            <p>Writes a Python snippet for what-if math (e.g. days to stock-out) and
+               runs it inside a disposable <b>Daytona</b> sandbox.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sponsor roles -->
+      <h2 class="arch-sub">How each sponsor is on the critical path</h2>
+      <section class="arch-cards">
+        <article class="arch-card">
+          <span class="arch-badge brain">Brain</span>
+          <h3>ai&amp; · OpenAI · Kimi · Nosana</h3>
+          <p>The coordinator's reasoning. All four speak the same OpenAI API, so we
+             swap only a URL + key. Running live on <b>ai&amp;</b> (gpt-oss-120b);
+             <b>Nosana</b> can host an open model on decentralized GPU.</p>
+        </article>
+        <article class="arch-card">
+          <span class="arch-badge oxy">Signals</span>
+          <h3>Oxylabs</h3>
+          <p>Live outbreak + weather signals scraped from news feeds and official
+             WHO pages, then LLM-extracted into per-disease demand multipliers that
+             drive the restock plan.</p>
+        </article>
+        <article class="arch-card">
+          <span class="arch-badge day">Sandbox</span>
+          <h3>Daytona</h3>
+          <p>Model-generated calculation code is untrusted, so it runs in a
+             disposable Daytona sandbox — isolated from the clinic's machine, and
+             destroyed after every run.</p>
+        </article>
+        <article class="arch-card">
+          <span class="arch-badge safe">Safety</span>
+          <h3>Escalation → Doctor</h3>
+          <p>The robustness core: being confidently wrong is the dangerous failure
+             mode, so the system hands off to a live doctor video call rather than
+             extrapolate into cases it doesn't know.</p>
+        </article>
+      </section>
     </div>
   </main>
 
@@ -223,6 +313,27 @@
     </section>
   </main>
 
+  <!-- ===================== RESTOCK VIEW ===================== -->
+  <main class="view" id="view-restock">
+    <div class="restock-wrap">
+      <div class="card restock-card">
+        <div class="card-head row">
+          <div>
+            <h2>Medicine restock — next 30 days</h2>
+            <p class="sub" id="restock-sub">forecast-adjusted from live outbreak signals</p>
+          </div>
+          <button class="ghost" id="refresh-restock">Refresh</button>
+        </div>
+        <p class="restock-lead">
+          We take each medicine's normal monthly usage and multiply it by a
+          forward-looking outbreak forecast from Oxylabs — so the clinic orders
+          <b>ahead</b> of a surge instead of restocking after it runs out.
+        </p>
+        <div id="restock" class="restock"></div>
+      </div>
+    </div>
+  </main>
+
   <!-- ===================== FIELD GUIDE VIEW ===================== -->
   <main class="view" id="view-guide">
     <div class="guide-intro">
@@ -234,6 +345,32 @@
     </div>
     <div class="guide-grid" id="guide-grid"></div>
   </main>
+
+  <!-- ===================== DOCTOR CALL MODAL ===================== -->
+  <!-- Hidden until an escalation button opens it. Hosts the live Jitsi call. -->
+  <div class="call-modal" id="call-modal" aria-hidden="true">
+    <div class="call-box" role="dialog" aria-modal="true" aria-label="Remote doctor consult">
+      <div class="call-head">
+        <div class="call-title">
+          <span class="call-dot"></span>
+          <div>
+            <strong>Remote doctor consult</strong>
+            <small id="call-room">connecting…</small>
+          </div>
+        </div>
+        <button class="call-close" id="call-close" aria-label="End call">End call</button>
+      </div>
+
+      <div class="call-stage" id="call-stage"></div>
+
+      <div class="call-foot">
+        <span class="call-share-label">Share with the doctor to join:</span>
+        <input class="call-link" id="call-link" readonly />
+        <button class="call-copy" id="call-copy">Copy</button>
+        <a class="call-open" id="call-open" target="_blank" rel="noreferrer">Open in new tab ↗</a>
+      </div>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>

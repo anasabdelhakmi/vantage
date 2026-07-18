@@ -9,10 +9,18 @@ with no credentials. When OXYLABS_USERNAME / OXYLABS_PASSWORD are set, it calls
 the real Oxylabs Web Scraper API.
 """
 
+import time
 from dataclasses import dataclass
 from typing import Dict, List
 
 import config
+
+# In-memory cache of the last live scrape, keyed by region. A live fetch is
+# slow (~30s: several page fetches + LLM extraction), and both the signals panel
+# and the restock forecast ask for the same data — so we scrape once and reuse
+# it for a few minutes instead of re-scraping on every request.
+_SIGNAL_CACHE: Dict[str, "tuple"] = {}     # region -> (timestamp, signals)
+_SIGNAL_TTL = 600                          # seconds (10 min)
 
 
 @dataclass
@@ -197,12 +205,21 @@ def get_outbreak_signals(region: str = "all") -> List[OutbreakSignal]:
     if not config.use_live_signals():
         return list(_MOCK_SIGNALS)
 
+    # Serve a recent scrape from cache if we have one (avoids the double-fetch
+    # between the signals panel and the restock forecast, and makes repeat
+    # loads instant).
+    cached = _SIGNAL_CACHE.get(region)
+    if cached and (time.time() - cached[0]) < _SIGNAL_TTL:
+        return cached[1]
+
     signals: List[OutbreakSignal] = []
     if config.oxylabs_proxies():
         signals += _fetch_real(NEWS_FEEDS, _fetch_via_proxy)
     if config.oxylabs_scraper_auth():
         signals += _fetch_real(OFFICIAL_SOURCES, _fetch_via_scraper)
-    return signals if signals else list(_MOCK_SIGNALS)
+    result = signals if signals else list(_MOCK_SIGNALS)
+    _SIGNAL_CACHE[region] = (time.time(), result)
+    return result
 
 
 # Server-rendered news RSS (fetched via the Residential Proxy), one query per
